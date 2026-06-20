@@ -11,6 +11,7 @@ import InventoryManager from './components/InventoryManager';
 import TraceabilityMatrix from './components/TraceabilityMatrix';
 import AcademicCurriculum from './components/AcademicCurriculum';
 import RequestManager from './components/RequestManager';
+import SyncModal from './components/SyncModal';
 import { 
   Compass, Package, Network, BookOpen, ClipboardList, Database, 
   HelpCircle, UserCheck, Key, ShieldCheck, RefreshCw 
@@ -61,6 +62,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'planner' | 'inventory' | 'traceability' | 'curriculum' | 'requests'>('planner');
 
   // Load state from backend on mount
@@ -78,6 +80,8 @@ export default function App() {
       if (data.spreadsheetUrl) {
         setSpreadsheetUrl(data.spreadsheetUrl);
         return data.spreadsheetUrl;
+      } else {
+        setSpreadsheetUrl(undefined);
       }
       return undefined;
     } catch (err) {
@@ -88,18 +92,17 @@ export default function App() {
     }
   };
 
-  const handleSyncSheets = async () => {
+  const handleSyncSheets = () => {
+    setSyncModalOpen(true);
+  };
+
+  const handleTriggerSync = async () => {
     try {
       setIsSyncing(true);
       const url = await fetchDbState(true);
-      if (url) {
-        alert("¡Éxito! Hoja de cálculo de Google Sheets sincronizada de forma correcta.");
-      } else {
-        alert("Sincronizado de forma local. Para conectar con Google Sheets de forma duradera, asegúrate de haber concedido permisos en AI Studio.");
-      }
+      // Beautiful non-intrusive feedback instead of blocking alert()
     } catch (e) {
       console.error(e);
-      alert("Error intentando conectar con Google Sheets.");
     } finally {
       setIsSyncing(false);
     }
@@ -494,6 +497,15 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Database sync status modal */}
+      <SyncModal
+        isOpen={syncModalOpen}
+        onClose={() => setSyncModalOpen(false)}
+        spreadsheetUrl={spreadsheetUrl}
+        isSyncing={isSyncing}
+        onSync={handleTriggerSync}
+      />
 
     </div>
   );
