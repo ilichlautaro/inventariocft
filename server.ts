@@ -134,6 +134,16 @@ app.post('/api/db/reset', async (req, res) => {
   res.json({ success: true, message: "Base de datos restaurada con éxito", db: initialData });
 });
 
+// Overwrite database state with incoming state (used to sync/preserve local modifications)
+app.post('/api/db/overwrite', async (req, res) => {
+  const incomingState = req.body as DatabaseState;
+  if (!incomingState || !incomingState.inventory || !incomingState.competencies) {
+    return res.status(400).json({ error: "Datos de estado inválidos" });
+  }
+  await saveActiveDatabaseState(req, incomingState);
+  res.json({ success: true, db: incomingState });
+});
+
 // --- INVENTORY ENDPOINTS (Bodeguero & Coordinador rights) ---
 app.post('/api/inventory', async (req, res) => {
   const { state } = await getActiveDatabaseState(req);

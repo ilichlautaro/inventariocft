@@ -70,22 +70,104 @@ export default function App() {
     fetchDbState();
   }, []);
 
+  // Sync state changes to localStorage automatically when dbState updates to preserve inputs (insumos)
+  useEffect(() => {
+    if (dbState && (dbState.inventory.length > 0 || dbState.competencies.length > 0)) {
+      localStorage.setItem('cft_pucv_db_state', JSON.stringify(dbState));
+    }
+  }, [dbState]);
+
   const fetchDbState = async (silently: boolean = false) => {
     try {
       if (!silently) setLoading(true);
       const res = await fetch('/api/db');
       if (!res.ok) throw new Error("Fallo al contactar el servidor Express");
       const data = await res.json();
-      setDbState(data);
-      if (data.spreadsheetUrl) {
-        setSpreadsheetUrl(data.spreadsheetUrl);
-        return data.spreadsheetUrl;
+      
+      const localSaved = localStorage.getItem('cft_pucv_db_state');
+      let mergedData = { ...data };
+      let updatedClientSide = false;
+
+      if (localSaved) {
+        try {
+          const parsedLocal = JSON.parse(localSaved) as DatabaseState;
+          
+          // Compare inventory items
+          const serverInvIds = new Set((data.inventory || []).map((i: any) => i.id));
+          const missingInServer = (parsedLocal.inventory || []).filter(i => !serverInvIds.has(i.id));
+
+          if (missingInServer.length > 0) {
+            mergedData.inventory = [...(data.inventory || []), ...missingInServer];
+            updatedClientSide = true;
+          }
+
+          // Compare stock movements
+          const serverMoveIds = new Set((data.movements || []).map((m: any) => m.id));
+          const missingMovements = (parsedLocal.movements || []).filter(m => !serverMoveIds.has(m.id));
+          if (missingMovements.length > 0) {
+            mergedData.movements = [...missingMovements, ...(data.movements || [])];
+            updatedClientSide = true;
+          }
+
+          // Compare requests
+          const serverReqIds = new Set((data.requests || []).map((r: any) => r.id));
+          const missingRequests = (parsedLocal.requests || []).filter(r => !serverReqIds.has(r.id));
+          if (missingRequests.length > 0) {
+            mergedData.requests = [...(data.requests || []), ...missingRequests];
+            updatedClientSide = true;
+          }
+
+          // Compare competencies
+          const serverCompIds = new Set((data.competencies || []).map((c: any) => c.id));
+          const missingCompetencies = (parsedLocal.competencies || []).filter(c => !serverCompIds.has(c.id));
+          if (missingCompetencies.length > 0) {
+            mergedData.competencies = [...(data.competencies || []), ...missingCompetencies];
+            updatedClientSide = true;
+          }
+
+          // Compare traceability
+          const serverTraceIds = new Set((data.traceability || []).map((t: any) => t.id));
+          const missingTrace = (parsedLocal.traceability || []).filter(t => !serverTraceIds.has(t.id));
+          if (missingTrace.length > 0) {
+            mergedData.traceability = [...(data.traceability || []), ...missingTrace];
+            updatedClientSide = true;
+          }
+
+          if (updatedClientSide) {
+            console.log("Restoring local changes back to Cloud Run server to keep fallback in sync...");
+            await fetch('/api/db/overwrite', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(mergedData)
+            });
+          }
+        } catch (errJson) {
+          console.error("Error merging with localStorage:", errJson);
+        }
+      }
+
+      setDbState(mergedData);
+      localStorage.setItem('cft_pucv_db_state', JSON.stringify(mergedData));
+
+      if (mergedData.spreadsheetUrl) {
+        setSpreadsheetUrl(mergedData.spreadsheetUrl);
+        return mergedData.spreadsheetUrl;
       } else {
         setSpreadsheetUrl(undefined);
       }
       return undefined;
     } catch (err) {
       console.error("Error sincronizando base de datos central:", err);
+      // Absolute fallback to local localStorage database if server is unreachable or offline
+      const localSaved = localStorage.getItem('cft_pucv_db_state');
+      if (localSaved) {
+        try {
+          const parsedLocal = JSON.parse(localSaved) as DatabaseState;
+          setDbState(parsedLocal);
+        } catch (e) {
+          console.error("Error fall-backing to local storage:", e);
+        }
+      }
       return undefined;
     } finally {
       if (!silently) setLoading(false);
@@ -100,9 +182,10 @@ export default function App() {
     try {
       setIsSyncing(true);
       const url = await fetchDbState(true);
-      // Beautiful non-intrusive feedback instead of blocking alert()
+      return url;
     } catch (e) {
       console.error(e);
+      return undefined;
     } finally {
       setIsSyncing(false);
     }
