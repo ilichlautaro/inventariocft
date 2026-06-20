@@ -1,0 +1,6 @@
+{
+  "name": "Trazabilidad e Inventario CFT PUCV",
+  "description": "Sistema MVP para la Gestión de Inventario, Competencias Curriculares y Trazabilidad Pedagógica para laboratorios prácticos en CFT PUCV.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
