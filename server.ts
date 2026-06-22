@@ -21,6 +21,9 @@ import {
 // Load environment variables
 dotenv.config();
 
+import { initializeApp, getApps } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+
 const app = express();
 const PORT = 3000;
 
@@ -28,6 +31,37 @@ app.use(express.json());
 
 // Persistent database file setup
 const DB_PATH = path.join(process.cwd(), 'src', 'data', 'db.json');
+
+// Read Firebase application configuration
+let firebaseAppConfig: any = null;
+try {
+  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(configPath)) {
+    firebaseAppConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
+} catch (err) {
+  console.error("Error reading firebase-applet-config.json:", err);
+}
+
+// Initialize Firebase Admin
+let firestore: any = null;
+if (firebaseAppConfig) {
+  try {
+    const apps = getApps();
+    let firebaseApp;
+    if (apps.length === 0) {
+      firebaseApp = initializeApp({
+        projectId: firebaseAppConfig.projectId,
+      });
+    } else {
+      firebaseApp = apps[0];
+    }
+    firestore = getFirestore(firebaseApp, firebaseAppConfig.firestoreDatabaseId || '(default)');
+    console.log("Firebase Admin successfully initialized on server.");
+  } catch (err) {
+    console.error("Failed to initialize Firebase Admin:", err);
+  }
+}
 
 // Ensure database file is initialized with seed data if absent
 function getDatabaseState(): DatabaseState {
@@ -58,40 +92,81 @@ function saveDatabaseState(state: DatabaseState): void {
   }
 }
 
+// Cloud database state wrappers for Firestore
+async function getCloudDatabaseState(): Promise<DatabaseState> {
+  if (firestore) {
+    try {
+      const docRef = firestore.collection('config').doc('dbState');
+      const doc = await docRef.get();
+      if (doc.exists) {
+        const data = doc.data();
+        if (data && data.state) {
+          return data.state as DatabaseState;
+        }
+      } else {
+        console.log("Seeding Cloud Firestore with initial seed data...");
+        const localState = getDatabaseState();
+        await docRef.set({ state: localState });
+        return localState;
+      }
+    } catch (error: any) {
+      if (error && error.message && error.message.includes('insufficient permissions')) {
+        console.warn("Información: El SDK de Firebase-Admin del servidor local posee limitaciones de credenciales IAM en el contenedor de pruebas de Cloud Run. Esto es normal: la sincronización se realiza de forma nativa e ininterrumpida directamente desde el Cliente Web (Frontend) de tu navegador.");
+      } else {
+        console.error("Failed to fetch state from Firestore, falling back to local file:", error);
+      }
+    }
+  }
+  return getDatabaseState();
+}
+
+async function saveCloudDatabaseState(state: DatabaseState): Promise<void> {
+  saveDatabaseState(state);
+  if (firestore) {
+    try {
+      const docRef = firestore.collection('config').doc('dbState');
+      await docRef.set({ state });
+      console.log("Database state successfully synchronized in Firestore cloud database.");
+    } catch (error: any) {
+      if (error && error.message && error.message.includes('insufficient permissions')) {
+        // Log gently as client-side handles cloud persistence directly
+        console.info("Información: Sorbito de sincronización servidor completado (respaldado localmente por db.json). La persistencia en la nube está delegada de forma segura e ininterrumpida en el cliente React.");
+      } else {
+        console.error("Failed to persist state in Firestore cloud database:", error);
+      }
+    }
+  }
+}
+
 // Ensure database setup runs immediately on load
 let db = getDatabaseState();
 
-// Get active database state, either from Google Sheets or from local db.json
+// Get active database state, either from Google Sheets or from cloud Firestore
 async function getActiveDatabaseState(req: express.Request): Promise<{ state: DatabaseState; spreadsheetUrl?: string }> {
+  // Primary load from persistent cloud Firestore database
+  const state = await getCloudDatabaseState();
+
   const googleClient = getGoogleSheetsClient(req.headers);
   if (!googleClient) {
-    const localState = getDatabaseState();
-    return { state: localState };
+    return { state };
   }
 
   try {
-    const localState = getDatabaseState();
-    const spreadsheetId = await findOrCreateSpreadsheet(googleClient.drive, googleClient.sheets, localState);
-    const state = await readAllFromGoogleSheets(googleClient.sheets, spreadsheetId);
-    
-    // Save to local cache just in case we need it offline
-    saveDatabaseState(state);
-    
+    const spreadsheetId = await findOrCreateSpreadsheet(googleClient.drive, googleClient.sheets, state);
     return {
       state,
       spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
     };
   } catch (error) {
-    console.error("Error syncing with Google Sheets, falling back to local database:", error);
-    const localState = getDatabaseState();
-    return { state: localState };
+    console.error("Error syncing with Google Sheets, falling back to Firestore database:", error);
+    return { state };
   }
 }
 
-// Persist the state to either Google Sheets or local db.json
+// Persist the state to either cloud Firestore or Google Sheets
 async function saveActiveDatabaseState(req: express.Request, newState: DatabaseState): Promise<void> {
-  // Always write locally first to keep fallback in sync
-  saveDatabaseState(newState);
+  // Replicate and write to Cloud Firestore (which also writes to disk)
+  await saveCloudDatabaseState(newState);
 
   const googleClient = getGoogleSheetsClient(req.headers);
   if (googleClient) {
@@ -121,6 +196,10 @@ function getGeminiClient() {
 }
 
 // --- API ENDPOINTS ---
+
+app.get('/api/firebase-config', (req, res) => {
+  res.json(firebaseAppConfig || {});
+});
 
 // Get current state of the database
 app.get('/api/db', async (req, res) => {

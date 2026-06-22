@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "DbState": {
+      "title": "Database State",
+      "description": "Entire centralized state of CFT PUCV inventory and educational competencies",
+      "type": "object",
+      "properties": {
+        "inventory": {
+          "type": "array",
+          "description": "Items in inventory"
+        },
+        "movements": {
+          "type": "array",
+          "description": "Stock movement logs"
+        },
+        "requests": {
+          "type": "array",
+          "description": "Kit requests"
+        },
+        "competencies": {
+          "type": "array",
+          "description": "Curricular competencies"
+        },
+        "traceability": {
+          "type": "array",
+          "description": "Pedagogical traceability logs"
+        },
+        "spreadsheetUrl": {
+          "type": "string",
+          "description": "Linked spreadsheet URL"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/config/dbState": {
+      "schema": "DbState",
+      "description": "Centralized database state configuration document"
+    }
+  }
+}

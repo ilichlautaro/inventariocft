@@ -17,6 +17,12 @@ import {
   HelpCircle, UserCheck, Key, ShieldCheck, RefreshCw 
 } from 'lucide-react';
 
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+
+// Global reference for client-side Firebase Firestore instance
+let firebaseClientDb: any = null;
+
 // Predefined testing users mapping RBAC roles
 const TESTING_USERS: User[] = [
   {
@@ -65,10 +71,83 @@ export default function App() {
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'planner' | 'inventory' | 'traceability' | 'curriculum' | 'requests'>('planner');
 
-  // Load state from backend on mount
+  // Load state from backend on mount & initialize real-time Cloud Firestore client-side sync
   useEffect(() => {
     fetchDbState();
+
+    let unsubscribeFirestore: (() => void) | undefined = undefined;
+
+    const initFirebase = async () => {
+      try {
+        const configRes = await fetch('/api/firebase-config');
+        if (!configRes.ok) throw new Error("Fallo al obtener config de Firebase");
+        const config = await configRes.json();
+        
+        if (config && config.projectId && config.apiKey) {
+          console.log("Initializing client-side Firebase for live database synchronization...");
+          const apps = getApps();
+          let appInstance;
+          if (apps.length === 0) {
+            appInstance = initializeApp(config);
+          } else {
+            appInstance = apps[0];
+          }
+          
+          const dbInstance = getFirestore(appInstance, config.firestoreDatabaseId || '(default)');
+          firebaseClientDb = dbInstance;
+          
+          // Connect real-time Firestore synchronization for multiuser updates
+          const docRef = doc(dbInstance, 'config', 'dbState');
+          unsubscribeFirestore = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+              const cloudData = docSnap.data().state as DatabaseState;
+              if (cloudData) {
+                console.log("Real-time cloud database update synced in CFT PUCV web-client successfully.");
+                setDbState(cloudData);
+                localStorage.setItem('cft_pucv_db_state', JSON.stringify(cloudData));
+              }
+            } else {
+              console.log("Cloud database is uninitialized, seeding it now with local cache...");
+              const currentSaved = localStorage.getItem('cft_pucv_db_state');
+              if (currentSaved) {
+                try {
+                  const seedState = JSON.parse(currentSaved);
+                  setDoc(docRef, { state: seedState });
+                } catch (e) {
+                  console.error(e);
+                }
+              }
+            }
+          }, (err) => {
+            console.warn("Firestore snapshot subscription message:", err.message);
+          });
+        }
+      } catch (err) {
+        console.error("Firebase client initialization failed:", err);
+      }
+    };
+
+    initFirebase();
+
+    return () => {
+      if (unsubscribeFirestore) {
+        unsubscribeFirestore();
+      }
+    };
   }, []);
+
+  // Sync to Cloud Firestore when local mutations are successfully processed and saved
+  const syncToFirestore = async (state: DatabaseState) => {
+    if (firebaseClientDb) {
+      try {
+        const docRef = doc(firebaseClientDb, 'config', 'dbState');
+        await setDoc(docRef, { state });
+        console.log("Cloud Firestore database successfully synchronized client-side.");
+      } catch (err) {
+        console.warn("Could not sync state to Cloud Firestore client-side:", err);
+      }
+    }
+  };
 
   // Sync state changes to localStorage automatically when dbState updates to preserve inputs (insumos)
   useEffect(() => {
@@ -202,6 +281,7 @@ export default function App() {
       const data = await res.json();
       if (data.success) {
         setDbState(data.db);
+        syncToFirestore(data.db);
         if (data.spreadsheetUrl) {
           setSpreadsheetUrl(data.spreadsheetUrl);
         }
@@ -229,7 +309,10 @@ export default function App() {
         })
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -247,7 +330,10 @@ export default function App() {
         })
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -259,7 +345,10 @@ export default function App() {
         method: 'DELETE'
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -274,7 +363,10 @@ export default function App() {
         body: JSON.stringify(compPayload)
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -288,7 +380,10 @@ export default function App() {
         body: JSON.stringify(updatedFields)
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -300,7 +395,10 @@ export default function App() {
         method: 'DELETE'
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -315,7 +413,10 @@ export default function App() {
         body: JSON.stringify(tracePayload)
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -329,7 +430,10 @@ export default function App() {
         body: JSON.stringify(updatedFields)
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -341,7 +445,10 @@ export default function App() {
         method: 'DELETE'
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -356,7 +463,10 @@ export default function App() {
         body: JSON.stringify(reqPayload)
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -374,7 +484,10 @@ export default function App() {
         })
       });
       const data = await res.json();
-      if (data.db) setDbState(data.db);
+      if (data.db) {
+        setDbState(data.db);
+        syncToFirestore(data.db);
+      }
     } catch (e) {
       console.error(e);
     }
