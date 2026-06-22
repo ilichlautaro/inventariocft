@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { DatabaseState, User, InventoryItem, CurricularCompetency, PedagogicalTraceability, KitRequest } from './types';
 import Header from './components/Header';
+import DashboardOverview from './components/DashboardOverview';
 import TeacherPlanner from './components/TeacherPlanner';
 import InventoryManager from './components/InventoryManager';
 import TraceabilityMatrix from './components/TraceabilityMatrix';
@@ -14,7 +15,7 @@ import RequestManager from './components/RequestManager';
 import SyncModal from './components/SyncModal';
 import { 
   Compass, Package, Network, BookOpen, ClipboardList, Database, 
-  HelpCircle, UserCheck, Key, ShieldCheck, RefreshCw 
+  HelpCircle, UserCheck, Key, ShieldCheck, RefreshCw, LayoutDashboard, Menu, X, ChevronRight, Sparkles, AlertTriangle 
 } from 'lucide-react';
 
 import { initializeApp, getApps } from 'firebase/app';
@@ -69,7 +70,9 @@ export default function App() {
   const [isResetting, setIsResetting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'planner' | 'inventory' | 'traceability' | 'curriculum' | 'requests'>('planner');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'inventory' | 'traceability' | 'curriculum' | 'requests'>('dashboard');
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Load state from backend on mount & initialize real-time Cloud Firestore client-side sync
   useEffect(() => {
@@ -522,177 +525,293 @@ export default function App() {
   const criticalStockCount = dbState.inventory.filter(i => i.stock <= i.minStock).length;
   // Pending requests count
   const pendingRequestsCount = dbState.requests.filter(r => r.status === 'pendiente').length;
+  // All low stock items
+  const lowStockCount = dbState.inventory.filter(i => i.stock <= i.minStock).length;
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-between">
+    <div className="min-h-screen bg-surface flex">
       
-      {/* Full RBAC Managed Header */}
-      <Header
-        currentUser={currentUser}
-        allUsers={TESTING_USERS}
-        onChangeRole={selectTestUserAndRole}
-        onResetDb={handleResetDb}
-        isResetting={isResetting}
-        spreadsheetUrl={spreadsheetUrl}
-        onSync={handleSyncSheets}
-        isSyncing={isSyncing}
-      />
-
-      {/* Main Body */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-6">
-        
-        {/* Navigation Tabs */}
-        <div className="bg-white border border-slate-200 p-1.5 rounded-xl shadow-xs flex flex-wrap items-center gap-1">
+      {/* 1. Left Sidebar Shell - Hidden on mobile, sticky on desktop */}
+      <aside className={`fixed inset-y-0 left-0 w-70 bg-surface-container-lowest border-r border-outline-variant flex flex-col p-5 z-40 transition-transform duration-300 lg:translate-x-0 ${
+        mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
+        <div className="mb-8 px-2 flex justify-between items-center">
+          <div>
+            <div className="w-10 h-10 bg-primary text-white rounded-lg flex flex-col justify-center items-center font-black text-xs leading-none shadow-sm select-none mb-3">
+              <span className="text-[8px] font-bold text-slate-300 leading-none">CFT</span>
+              <span className="text-white font-extrabold text-[10px] tracking-tight mt-0.5">PUCV</span>
+            </div>
+            <h1 className="text-xl font-headline font-extrabold text-primary flex items-center gap-1.5">
+              EduInventory
+            </h1>
+            <p className="text-xs text-secondary font-medium font-sans mt-0.5">Gestión Administrativa</p>
+          </div>
           
+          <button 
+            onClick={() => setMobileSidebarOpen(false)}
+            className="lg:hidden p-1.5 hover:bg-surface-container rounded-full text-secondary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Navigation Tab Menu */}
+        <nav className="flex-1 space-y-1">
+          
+          {/* Dashboard/Inicio */}
           <button
-            onClick={() => setActiveTab('planner')}
-            className={`px-4 py-2 rounded-lg text-[11px] font-extrabold tracking-wider uppercase transition-all duration-150 flex items-center gap-2 cursor-pointer select-none ${
+            onClick={() => { setActiveTab('dashboard'); setMobileSidebarOpen(false); }}
+            className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-200 select-none cursor-pointer text-xs uppercase tracking-wider ${
+              activeTab === 'dashboard'
+                ? 'bg-secondary-container text-on-secondary-container font-extrabold shadow-xs'
+                : 'text-secondary hover:bg-surface-container-high'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            <span>Dashboard</span>
+          </button>
+
+          {/* Buscador Docente */}
+          <button
+            onClick={() => { setActiveTab('planner'); setMobileSidebarOpen(false); }}
+            className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-200 select-none cursor-pointer text-xs uppercase tracking-wider ${
               activeTab === 'planner'
-                ? 'bg-indigo-600 text-white shadow-xs border border-indigo-700'
-                : 'text-slate-500 border border-transparent hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-secondary-container text-on-secondary-container font-extrabold shadow-xs'
+                : 'text-secondary hover:bg-surface-container-high'
             }`}
           >
             <Compass className="w-4 h-4" />
-            Buscador Docente
+            <span>Buscador Docente</span>
           </button>
 
+          {/* Inventario Bodega */}
           <button
-            onClick={() => setActiveTab('inventory')}
-            className={`px-4 py-2 rounded-lg text-[11px] font-extrabold tracking-wider uppercase transition-all duration-150 flex items-center gap-2 cursor-pointer select-none ${
+            onClick={() => { setActiveTab('inventory'); setMobileSidebarOpen(false); }}
+            className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-200 select-none cursor-pointer text-xs uppercase tracking-wider justify-between ${
               activeTab === 'inventory'
-                ? 'bg-indigo-600 text-white shadow-xs border border-indigo-700'
-                : 'text-slate-500 border border-transparent hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-secondary-container text-on-secondary-container font-extrabold shadow-xs'
+                : 'text-secondary hover:bg-surface-container-high'
             }`}
           >
-            <Package className="w-4 h-4" />
-            Inventario Bodega
+            <div className="flex items-center gap-3">
+              <Package className="w-4 h-4" />
+              <span>Inventario Bodega</span>
+            </div>
             {criticalStockCount > 0 && (
-              <span className="bg-red-500 text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-full ring-1 ring-white">
+              <span className="bg-error text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-full ring-1 ring-white">
                 {criticalStockCount}
               </span>
             )}
           </button>
 
+          {/* Trazabilidad Pedagógica */}
           <button
-            onClick={() => setActiveTab('traceability')}
-            className={`px-4 py-2 rounded-lg text-[11px] font-extrabold tracking-wider uppercase transition-all duration-150 flex items-center gap-2 cursor-pointer select-none ${
+            onClick={() => { setActiveTab('traceability'); setMobileSidebarOpen(false); }}
+            className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-200 select-none cursor-pointer text-xs uppercase tracking-wider ${
               activeTab === 'traceability'
-                ? 'bg-indigo-600 text-white shadow-xs border border-indigo-700'
-                : 'text-slate-500 border border-transparent hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-secondary-container text-on-secondary-container font-extrabold shadow-xs'
+                : 'text-secondary hover:bg-surface-container-high'
             }`}
           >
             <Network className="w-4 h-4" />
-            Trazabilidad Pedagógica
+            <span>Trazabilidad</span>
           </button>
 
+          {/* Malla Curricular */}
           <button
-            onClick={() => setActiveTab('curriculum')}
-            className={`px-4 py-2 rounded-lg text-[11px] font-extrabold tracking-wider uppercase transition-all duration-150 flex items-center gap-2 cursor-pointer select-none ${
+            onClick={() => { setActiveTab('curriculum'); setMobileSidebarOpen(false); }}
+            className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-200 select-none cursor-pointer text-xs uppercase tracking-wider ${
               activeTab === 'curriculum'
-                ? 'bg-indigo-600 text-white shadow-xs border border-indigo-700'
-                : 'text-slate-500 border border-transparent hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-secondary-container text-on-secondary-container font-extrabold shadow-xs'
+                : 'text-secondary hover:bg-surface-container-high'
             }`}
           >
             <BookOpen className="w-4 h-4" />
-            Malla Curricular
+            <span>Malla Curricular</span>
           </button>
 
+          {/* Bandeja de Solicitudes */}
           <button
-            onClick={() => setActiveTab('requests')}
-            className={`px-4 py-2 rounded-lg text-[11px] font-extrabold tracking-wider uppercase transition-all duration-150 flex items-center gap-2 cursor-pointer select-none ${
+            onClick={() => { setActiveTab('requests'); setMobileSidebarOpen(false); }}
+            className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-200 select-none cursor-pointer text-xs uppercase tracking-wider justify-between ${
               activeTab === 'requests'
-                ? 'bg-indigo-600 text-white shadow-xs border border-indigo-700'
-                : 'text-slate-500 border border-transparent hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-secondary-container text-on-secondary-container font-extrabold shadow-xs'
+                : 'text-secondary hover:bg-surface-container-high'
             }`}
           >
-            <ClipboardList className="w-4 h-4" />
-            Bandeja de Solicitudes
+            <div className="flex items-center gap-3">
+              <ClipboardList className="w-4 h-4" />
+              <span>Solicitudes</span>
+            </div>
             {pendingRequestsCount > 0 && (
-              <span className="bg-amber-550 bg-amber-600 text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-full ring-1 ring-white">
+              <span className="bg-primary text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-full ring-1 ring-white">
                 {pendingRequestsCount}
               </span>
             )}
           </button>
 
-        </div>
+        </nav>
 
-        {/* Dynamic Tab Panel loading */}
-        <div className="transition-all animate-fadeIn">
+        {/* Sidebar Footer with system info & User profile card */}
+        <div className="mt-auto border-t border-outline-variant/60 pt-4">
           
-          {activeTab === 'planner' && (
-            <TeacherPlanner
-              competencies={dbState.competencies}
-              traceability={dbState.traceability}
-              inventory={dbState.inventory}
-              requests={dbState.requests.filter(r => r.requestedBy === currentUser.id)}
-              currentUser={currentUser}
-              onAddRequest={handleAddRequest}
+          <button 
+            onClick={() => setSyncModalOpen(true)}
+            className="w-full flex items-center gap-3 px-4 py-2 text-[11px] font-bold tracking-wider text-secondary hover:bg-surface-container-high rounded-lg transition-colors cursor-pointer select-none uppercase mb-2"
+          >
+            <Database className="w-4 h-4 text-primary" />
+            <span>Estado Base Datos</span>
+          </button>
+
+          <div className="flex items-center gap-3 px-3 py-3 mt-1 bg-surface-container-low/60 rounded-xl border border-outline-variant/30">
+            <img 
+              className="w-10 h-10 rounded-full border-2 border-primary-container object-cover shadow-xs" 
+              src={currentUser.avatar || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120"} 
+              alt={currentUser.name} 
             />
-          )}
-
-          {activeTab === 'inventory' && (
-            <InventoryManager
-              inventory={dbState.inventory}
-              movements={dbState.movements}
-              role={currentUser.role}
-              currentUser={currentUser}
-              onAddItem={handleAddItem}
-              onUpdateItem={handleUpdateItem}
-              onDeleteItem={handleDeleteItem}
-            />
-          )}
-
-          {activeTab === 'traceability' && (
-            <TraceabilityMatrix
-              traceability={dbState.traceability}
-              inventory={dbState.inventory}
-              competencies={dbState.competencies}
-              role={currentUser.role}
-              onAddTraceability={handleAddTraceability}
-              onUpdateTraceability={handleUpdateTraceability}
-              onDeleteTraceability={handleDeleteTraceability}
-            />
-          )}
-
-          {activeTab === 'curriculum' && (
-            <AcademicCurriculum
-              competencies={dbState.competencies}
-              role={currentUser.role}
-              onAddCompetency={handleAddCompetency}
-              onUpdateCompetency={handleUpdateCompetency}
-              onDeleteCompetency={handleDeleteCompetency}
-            />
-          )}
-
-          {activeTab === 'requests' && (
-            <RequestManager
-              requests={dbState.requests}
-              inventory={dbState.inventory}
-              traceability={dbState.traceability}
-              role={currentUser.role}
-              currentUser={currentUser}
-              onUpdateRequestStatus={handleUpdateRequestStatus}
-            />
-          )}
-
-        </div>
-
-      </main>
-
-      {/* Corporate footer */}
-      <footer className="bg-slate-900 text-slate-400 py-6 text-center text-xs font-sans mt-12 border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 space-y-2">
-          <p className="font-medium text-slate-300">
-            © 2026 Centro de Formación Técnica de la Pontificia Universidad Católica de Valparaíso (CFT PUCV).
-          </p>
-          <p className="text-3xs text-slate-500 font-mono">
-            Plataforma Corporativa Homologada • Reglas de Trazabilidad Educacional en el Aula y Auditoría Permanente de Bodega
-          </p>
-          <div className="flex justify-center space-x-4 text-3xs font-bold text-slate-500 font-mono pt-1">
-            <span>Sede Quillota</span> • <span>Sede Valparaíso</span> • <span>Sede Viña del Mar</span> • <span>Sede La Calera</span>
+            <div className="overflow-hidden">
+              <p className="text-xs font-bold text-on-surface truncate">{currentUser.name}</p>
+              <p className="text-[10px] text-secondary truncate font-mono capitalize">{currentUser.role === 'bodeguero' ? 'Jefe de Bodega' : currentUser.role}</p>
+            </div>
           </div>
         </div>
-      </footer>
+      </aside>
+
+      {/* Background shadow click away overlay for mobile drawer */}
+      {mobileSidebarOpen && (
+        <div 
+          onClick={() => setMobileSidebarOpen(false)}
+          className="fixed inset-0 bg-black/45 z-30 lg:hidden"
+        />
+      )}
+
+      {/* 2. Main Area (Occupies remainder of space dynamically, starting at left padding on desktops) */}
+      <div className="flex-1 lg:pl-70 flex flex-col min-h-screen overflow-hidden">
+        
+        {/* Top AppBar */}
+        <Header
+          currentUser={currentUser}
+          allUsers={TESTING_USERS}
+          onChangeRole={selectTestUserAndRole}
+          onResetDb={handleResetDb}
+          isResetting={isResetting}
+          spreadsheetUrl={spreadsheetUrl}
+          onSync={handleSyncSheets}
+          isSyncing={isSyncing}
+          globalSearch={globalSearch}
+          setGlobalSearch={setGlobalSearch}
+          onToggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+        />
+
+        {/* Content canvas */}
+        <main className="flex-1 p-6 md:p-8 bg-surface space-y-6 overflow-y-auto w-full max-w-7xl mx-auto">
+          
+          {/* Display notification badge warning if sync fails */}
+          {lowStockCount > 0 && activeTab === 'dashboard' && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between shadow-3xs animate-fadeIn">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 bg-amber-100/80 rounded-lg text-amber-700">
+                  <AlertTriangle className="w-4.5 h-4.5" />
+                </span>
+                <div>
+                  <h4 className="text-xs font-bold text-amber-900">Alerta de Existencias</h4>
+                  <p className="text-[11px] text-amber-700">Se han detectado {lowStockCount} insumos críticos con stock igual o inferior a su mínimo establecido en el pañol escolar.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setActiveTab('inventory')}
+                className="text-[10px] font-bold text-amber-900 underline hover:no-underline cursor-pointer tracking-wider uppercase"
+              >
+                Ver Bodega
+              </button>
+            </div>
+          )}
+
+          {/* Active rendering view panels */}
+          <div className="transition-all duration-350">
+            
+            {activeTab === 'dashboard' && (
+              <DashboardOverview
+                dbState={dbState}
+                currentUser={currentUser}
+                onNavigateToTab={(tab) => setActiveTab(tab)}
+                onGenerateReport={handleTriggerSync}
+              />
+            )}
+
+            {activeTab === 'planner' && (
+              <TeacherPlanner
+                competencies={dbState.competencies}
+                traceability={dbState.traceability}
+                inventory={dbState.inventory}
+                requests={dbState.requests.filter(r => r.requestedBy === currentUser.id)}
+                currentUser={currentUser}
+                onAddRequest={handleAddRequest}
+              />
+            )}
+
+            {activeTab === 'inventory' && (
+              <InventoryManager
+                inventory={dbState.inventory}
+                movements={dbState.movements}
+                role={currentUser.role}
+                currentUser={currentUser}
+                onAddItem={handleAddItem}
+                onUpdateItem={handleUpdateItem}
+                onDeleteItem={handleDeleteItem}
+              />
+            )}
+
+            {activeTab === 'traceability' && (
+              <TraceabilityMatrix
+                traceability={dbState.traceability}
+                inventory={dbState.inventory}
+                competencies={dbState.competencies}
+                role={currentUser.role}
+                onAddTraceability={handleAddTraceability}
+                onUpdateTraceability={handleUpdateTraceability}
+                onDeleteTraceability={handleDeleteTraceability}
+              />
+            )}
+
+            {activeTab === 'curriculum' && (
+              <AcademicCurriculum
+                competencies={dbState.competencies}
+                role={currentUser.role}
+                onAddCompetency={handleAddCompetency}
+                onUpdateCompetency={handleUpdateCompetency}
+                onDeleteCompetency={handleDeleteCompetency}
+              />
+            )}
+
+            {activeTab === 'requests' && (
+              <RequestManager
+                requests={dbState.requests}
+                inventory={dbState.inventory}
+                traceability={dbState.traceability}
+                role={currentUser.role}
+                currentUser={currentUser}
+                onUpdateRequestStatus={handleUpdateRequestStatus}
+              />
+            )}
+
+          </div>
+
+        </main>
+
+        {/* Corporate footer matched to layout bounds */}
+        <footer className="bg-inverse-surface text-secondary border-t border-outline-variant/30 py-6 text-center text-xs mt-auto">
+          <div className="max-w-7xl mx-auto px-6 space-y-1.5 opacity-80 animate-fadeIn">
+            <p className="font-semibold text-inverse-on-surface">
+              © 2026 Centro de Formación Técnica de la Pontificia Universidad Católica de Valparaíso (CFT PUCV).
+            </p>
+            <p className="text-[10px] text-slate-400 font-mono">
+              Plataforma Homologada de Acreditación Institucional • Integración de Clases Prácticas y Control Técnico de Bodegas
+            </p>
+          </div>
+        </footer>
+
+      </div>
 
       {/* Database sync status modal */}
       <SyncModal
